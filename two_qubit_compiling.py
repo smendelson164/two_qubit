@@ -1,5 +1,5 @@
 import numpy as np 
-import sympy as sp
+# import sympy as sp
 import itertools
 
 # This is a function for finding the largest power of 2 that divides a.
@@ -128,11 +128,11 @@ def zero_matrix():
 
 # Converts a tuple into something more readable. Used below.
 def convert(a):
-    return (a[0] + a[1]*sp.sqrt(2))/sp.sqrt(2)**a[2]
+    return (a[0])# + a[1]*np.sqrt(2))/np.sqrt(2)**a[2]
 
 # Converts a matrix of tuples into something more readable.
 def convert_matrix(A):
-    B = sp.zeros(6,6)
+    B = np.zeros((6,6),dtype='int')
     for i in range(6):
         for j in range(6):
             B[i,j] = convert(A[i,j])
@@ -278,8 +278,8 @@ def canonical_form(A,cliffords=False):
                     fix_right = temp_right
     
     if cliffords:
-        left = fix_left*left
-        right = right*fix_right
+        left = fix_left@left
+        right = right@fix_right
     
     if cliffords:
         return temp_max,left,right
@@ -297,7 +297,7 @@ def str_to_mat(s):
     return temp.reshape(6,6)
 
 # Creates a random list of k T-gates and outputs the sequence and corresponding matrix
-def random_operation(k):
+def random_operation(c):
     temp = m(1,1)
     seq = []
     for i in range(c):
@@ -545,7 +545,7 @@ def compile(A):
         lde = max([A[i,j][2] for i in range(6) for j in range(6)])
     left_steps = [(p[1],p[0]) for p in (left_steps)][::-1]
     right_steps = [(p[1],p[0]) for p in right_steps[::-1]]
-    perm = np.array(list((sp.Matrix([1,2,3,4,5,6]).T)*convert_matrix(A)))
+    perm = np.array(list((np.array([1,2,3,4,5,6],dtype='int').reshape(1,-1))@(convert_matrix(A)))).reshape(-1,)
     new_right = []
     for i in right_steps:
         t = tuple(perm[np.array(i)-1])
@@ -588,9 +588,9 @@ def postprocessing(T_list,T_table,k):
         if mat_to_str(canonical_form(test)) in T_table:
             test,test_L,test_R = canonical_form(test,True)
             shorter,shorter_L,shorter_R = canonical_form(str_to_mat(T_table[mat_to_str(test)][0]),True)
-            L = test_L.T*shorter_L
-            R = shorter_R*test_R.T
-            perm = np.array(list((sp.Matrix([1,2,3,4,5,6]).T)*L),dtype='int')
+            L = test_L.T@shorter_L
+            R = shorter_R@test_R.T
+            perm = np.array(list((np.array([1,2,3,4,5,6],dtype='int').reshape(1,-1))@L),dtype='int').reshape(-1,)
             shorter_list = []
             for i in T_table[mat_to_str(test)][1][::-1]:
                 t = tuple(perm[np.array(i,dtype='int')-1])
@@ -598,7 +598,7 @@ def postprocessing(T_list,T_table,k):
                     shorter_list.append((np.abs(t[0]),np.abs(t[1])))
                 else:
                     shorter_list.append((np.abs(t[1]),np.abs(t[0])))
-            perm = np.array(list((sp.Matrix([1,2,3,4,5,6]).T)*L*R))
+            perm = np.array(list((np.array([1,2,3,4,5,6],dtype='int').reshape(1,-1))@L@R)).reshape(-1,)
             updated  = []
             for i in updated_list[(index+k):]:
                 t = tuple(perm[np.array(i,dtype='int')-1])
@@ -608,7 +608,7 @@ def postprocessing(T_list,T_table,k):
                     updated.append((np.abs(t[1]),np.abs(t[0])))
             updated_list = updated_list[:index] + shorter_list + updated
             index = 0
-            clifford = L*R*clifford
+            clifford = L@R@clifford
         else:
             index += 1
     return updated_list, clifford
