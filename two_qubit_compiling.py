@@ -1,5 +1,5 @@
 import numpy as np 
-# import sympy as sp
+import sympy as sp
 import itertools
 
 # This is a function for finding the largest power of 2 that divides a.
@@ -128,11 +128,11 @@ def zero_matrix():
 
 # Converts a tuple into something more readable. Used below.
 def convert(a):
-    return (a[0])# + a[1]*np.sqrt(2))/np.sqrt(2)**a[2]
+    return (a[0] + a[1]*sp.sqrt(2))/sp.sqrt(2)**a[2]
 
 # Converts a matrix of tuples into something more readable.
 def convert_matrix(A):
-    B = np.zeros((6,6),dtype='int')
+    B = sp.zeros(6,6)
     for i in range(6):
         for j in range(6):
             B[i,j] = convert(A[i,j])
@@ -180,111 +180,102 @@ def vector_sign(v):
     else:
         return [(sign*v[i][0],sign*v[i][1],v[i][2]) for i in range(6)],sign
 
-# Returns a canonical representation of an SO(6) matrix
-def canonical_form(A,cliffords=False):
-    A = A.copy()
-    if cliffords:
-        left = convert_matrix(m(1,1))
-        right = convert_matrix(m(1,1))
-    
-    x = [sorted_vector(A[i,:]) for i in range(6)]
-    row_index = argsort(x)
-    x = [x[row_index[i]] for i in range(6)]
-    A = A[row_index,:]
-    if cliffords:
-        left = left[row_index,:]
+def frequency(A):
+    return [tuple([len(set(sorted_vector(A[i])))]+list(sorted_vector(A[i]))) for i in range(6)]
 
-    y = [vector_abs(A[:,i]) for i in range(6)]
-    col_index = argsort(y)
-    y = [y[col_index[i]] for i in range(6)]
-    A = A[:,col_index]
-    if cliffords:
-        right = right[:,col_index]
-    
+def equivalent_sets(v):
+    v = [v[i] for i in argsort(v)]
     rows = [[0]]
-    for i in range(5):
-        if x[i+1] == x[i]:
+    for i in range(len(v)-1):
+        if v[i+1] == v[i]:
             rows[-1].append(i+1)
         else:
             rows.append([i+1])
-            
-    cols = [[0]]
-    for i in range(5):
-        if y[i+1] == y[i]:
-            cols[-1].append(i+1)
-        else:
-            cols.append([i+1])
-    
+    return rows
+
+def sign_change(A,rows,columns):
+    A = A.copy()
+    for i in rows:
+        A[i] = [(-A[i,j][0],-A[i,j][1],A[i,j][2]) for j in range(6)]
+    for j in columns:
+        A[:,j] = [(-A[i,j][0],-A[i,j][1],A[i,j][2]) for i in range(6)]
+    return A
+
+def pivot_finder(A):
+    pivot_col = []
+    fixed_col = []
+    row = 0
+    while row < 6:
+        fnz = next((i for i, x in enumerate(A[row]) if x != (0,0,0)), None)
+        if fnz not in fixed_col:
+            pivot_col.append(fnz)
+        for i in range(fnz,6):
+            if A[row,i] != (0,0,0) and (i not in fixed_col):
+                fixed_col.append(i)
+        row += 1
+    return pivot_col
+
+def fixed_sign_change(A):
+    A = A.copy()
+    fixed_col = pivot_finder(A)
+    row = 0
+    while row < 6:
+        fnz = next((i for i, x in enumerate(A[row]) if x != (0,0,0)), None)
+        if A[row,fnz][0] < 0:
+            A = sign_change(A,[row],[])
+        for i in range(fnz,6):
+            if A[row,i][0] < 0 and (i not in fixed_col):
+                A = sign_change(A,[],[i])
+                fixed_col.append(i)
+            elif A[row,i][0] > 0 and (i not in fixed_col):
+                fixed_col.append(i)
+        row += 1
+    return A
+
+def best_sign_change(A):
+    temp_A = A.copy()
+    pivots = pivot_finder(A)
+    for r in range(len(pivots)+1):
+        for q in range(len(pivots)+1):
+            for rows in itertools.combinations(pivots,r):
+                for columns in itertools.combinations(pivots,q):
+                    if tuple(fixed_sign_change(sign_change(A,rows,columns)).reshape(-1,)) > tuple(temp_A.reshape(-1,)):
+                        temp_A = fixed_sign_change(sign_change(A,rows,columns))
+    return temp_A
+
+# Returns a canonical representation of an SO(6) matrix
+def canonical_form(A):
+    A = A.copy()
+    x = frequency(A)
+    rows = equivalent_sets(x)
+    A = A[argsort(x)]
+    y = [vector_abs(A[:,i]) for i in range(6)]
+    A = A[:,argsort(y)]
+    check_A = best_sign_change(A)
+    if tuple(check_A.reshape(-1,)) == tuple(m(1,1).reshape(-1)):
+        return m(1,1)
+    if tuple(check_A.reshape(-1,)) == tuple(sign_change(m(1,2),[],[1]).reshape(-1)):
+        return m(1,2)
     row_perms = []
     for i in rows:
         row_perms.append(list(itertools.permutations(i)))
-
-    check_A = tuple(m(1,1).reshape(-1,))
-    while check_A != tuple(A.reshape(-1,)):
-        for i in range(6):
-            temp = vector_sign(A[i,:])
-            A[i,:] = temp[0]
-            if cliffords:
-                left[i,:] = temp[1]*left[i,:]
-            temp = vector_sign(A[:,i])
-            A[:,i] = temp[0]
-            if cliffords:
-                right[:,i] = temp[1]*right[:,i]
-        check_A = tuple(A.reshape(-1,))
-   
-    temp_max = A.copy()
-    if cliffords:
-        fix_left = convert_matrix(m(1,1))
-        fix_right = convert_matrix(m(1,1))
     for i in itertools.product(*row_perms):
         temp_rows = [x for xs in i for x in xs]
         temp_A = A[temp_rows,:].copy()
-        if cliffords:
-            temp_left = convert_matrix(m(1,1))[temp_rows,:]
         y = [vector_abs(temp_A[:,i]) for i in range(6)]
         col_index = argsort(y)
-        temp_col = []
-        for j in range(len(cols)):
-            temp_col.append([])
-            for k in range(len(cols[j])):
-                temp_col[-1].append(col_index[cols[j][k]])
+        temp_A = temp_A[:,col_index]
+        cols = equivalent_sets(y)
         col_perms = []
-        for j in temp_col:
+        for j in cols:
             col_perms.append(list(itertools.permutations(j)))
         for j in itertools.product(*col_perms):
             temp_cols = [x for xs in j for x in xs]
-            temp_A = temp_A[:,temp_cols].copy()  
-            if cliffords:
-                temp_right = convert_matrix(m(1,1))[:,temp_cols]
-            check_A = tuple(m(1,1).reshape(-1,))
-            while check_A != tuple(temp_A.reshape(-1,)):
-                for i in range(6):
-                    temp = vector_sign(A[i,:])
-                    temp_A[i,:] = temp[0]
-                    if cliffords:
-                        temp_left[i,:] = temp[1]*temp_left[i,:]
-                    temp = vector_sign(A[:,i])
-                    temp_A[:,i] = temp[0]
-                    if cliffords:
-                        temp_right[:,i] = temp[1]*temp_right[:,i]
-                check_A = tuple(temp_A.reshape(-1,))
-            if tuple((temp_A).reshape(-1,)) > tuple(temp_max.reshape(-1,)):
-                temp_max = temp_A
-                row_index = temp_rows
-                if cliffords:
-                    fix_left = temp_left
-                col_index = temp_cols
-                if cliffords:
-                    fix_right = temp_right
-    
-    if cliffords:
-        left = fix_left@left
-        right = right@fix_right
-    
-    if cliffords:
-        return temp_max,left,right
-    else:
-        return temp_max
+            temp_A = temp_A[:,temp_cols].copy()
+            temp_A = best_sign_change(temp_A)
+            if tuple(temp_A.reshape(-1,)) > tuple(check_A.reshape(-1,)):
+                check_A = temp_A
+    return check_A
 
 # Converts a matrix to a string to be stored in a dictionary.
 def mat_to_str(A):
